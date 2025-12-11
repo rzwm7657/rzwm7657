@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>testando essa bomba - RZWM INFECTATION</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .hud-top { display: flex; justify-content: space-between; align-items: flex-start; color: white; text-shadow: 2px 2px 0 #000; font-weight: 800; background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent); padding: 10px; border-radius: 8px; }
+        .info-box { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; border-left: 3px solid #ffbb00; }
+        .level-badge { color: #FFD700; font-size: 24px; display: block; }
+        .time-display { color: #4da6ff; font-size: 16px; margin-top: 5px; }
+        .hud-stats { text-align: right; }
+        .health-bar { color: #ff4444; font-size: 22px; } 
+        .zombie-count { color: #44ff44; font-size: 18px; }
+        .npc-count { color: #2b00ff; font-size: 18px; }
+        .hud-bottom-right { position: absolute; bottom: 20px; right: 20px; text-align: right; background: rgba(0, 0, 0, 0.8); padding: 20px; border-radius: 8px; border-left: 4px solid #4da6ff; color: white; }
+        .ammo-count { font-size: 36px; font-weight: 900; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background-color: #0f0; border: 1px solid #000; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 4px #0f0; }
+        #crosshair.recoil { transform: translate(-50%, -50%) scale(6); border-color: red; transition: transform 0.1s; }
+        #blocker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 10; pointer-events: auto; backdrop-filter: blur(5px); }
+        #instructions { text-align: center; color: white; padding: 40px; background: rgba(20, 25, 30, 0.95); border: 1px solid #444; max-width: 650px; border-top: 5px solid #ffbb00; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+        h1 { font-size: 48px; margin: 0; color: #ffbb00; font-weight: 900; }
+        .btn { background: #ffbb00; color: black; border: none; padding: 15px 50px; font-size: 20px; font-weight: bold; cursor: pointer; margin-top: 20px; transition: 0.2s; border-radius: 4px; }
+        .btn:hover { background: #ffcc33; transform: scale(1.05); } 
+        .btn:disabled { background: #555; cursor: wait; color: #aaa; transform: none; }
+        .sponsor { margin-top: 30px; font-size: 12px; color: #888; border-top: 1px solid #444; padding-top: 10px; } 
+        .sponsor strong { color: #4da6ff; }
+        #damage-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; background: radial-gradient(circle, transparent 40%, rgba(200, 0, 0, 0.6) 100%); transition: opacity 0.2s; }
+        #kill-feed { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.3s; text-align: center; pointer-events: none; color: #ff4444; font-weight: 900; font-size: 28px; text-shadow: 2px 2px 0 #000; }
+        .ai-text { font-family: monospace; color: #4da6ff; background: rgba(0,20,40,0.6); padding: 15px; text-align: left; font-size: 14px; margin-bottom: 20px; border-left: 4px solid #4da6ff; min-height: 50px; }
+        .loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 999; display: flex; align-items: center; justify-content: center; color: #ffbb00; font-size: 24px; font-weight: bold; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loader" class="loading-screen">SINCRONIZANDO SISTEMAS BULKJET...</div>
+    <div id="damage-overlay"></div>
+    
+    <div id="blocker">
+        <div id="instructions">
+            <h1>Zumbi City SP</h1>
+            <h2 id="level-title">NÍVEL 1</h2>
+            
+            <div id="ai-briefing" class="ai-text">Conectando ao satélite meteorológico...</div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; background: rgba(0,0,0,0.3); padding: 15px; font-size: 14px; color: #ddd;">
+                <div><strong>W, A, S, D</strong> : Mover</div>
+                <div><strong>SHIFT</strong> : Correr</div>
+                <div><strong>MOUSE</strong> : Atirar</div>
+                <div><strong>ESPAÇO</strong> : Pular</div>
+                <div style="grid-column: span 2; color: #ffbb00; font-size: 12px; margin-top:5px;">⚠️ Cuidado com carros e proteja os civis da infecção!</div>
+            </div>
+
+            <button class="btn" id="start-btn" disabled>INICIAR</button>
+            
+            <div class="sponsor">
+                Suprimentos e Logística:<br>
+                <strong>Bulkjet Cartuchos e Informática</strong>
+            </div>
+            <div style="margin-top: 10px; font-size: 11px; cursor: pointer; text-decoration: underline; color: #555;" onclick="localStorage.clear(); location.reload();">Resetar Progresso</div>
+        </div>
+    </div>
+
+    <div id="game-ui">
+        <div class="hud-top">
+            <div class="info-box">
+                <span class="level-badge">NÍVEL <span id="hud-level">1</span></span>
+                <div class="time-display" id="time-display">12:00 PM - SOL</div>
+            </div>
+            <div class="hud-stats">
+                <div class="health-bar">HP <span id="health-display">200</span></div>
+                <div class="zombie-count">ZUMBIS: <span id="zombie-display">0</span></div>
+                <div class="npc-count">CIVIS: <span id="npc-display">0</span></div>
+            </div>
+        </div>
+        <div id="kill-feed">ALVO ABATIDO</div>
+        <div class="hud-bottom-right">
+            <div style="font-size:12px; color:#888;">MUNIÇÃO</div>
+            <div class="ammo-count"><span id="ammo-display">15</span><span style="font-size:18px; color:#aaa;">/∞</span></div>
+        </div>
+    </div>
+    <div id="crosshair"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        // --- CONFIGURAÇÃO ---
+        let currentLevel = parseInt(localStorage.getItem('zumbi_sp_level') || '1');
+        const CONFIG = {
+            HP: 200,
+            Z_HP: 100 + (currentLevel * 20),
+            Z_COUNT: Math.min(80, 10 + (currentLevel * 5)), // Menos zumbis, mas mais perigosos
+            NPC_COUNT: 10,
+            CARS: 8
+        };
+        const apiKey = ""; 
+
+        // --- ESTADO DO JOGO ---
+        const gameState = { hp: CONFIG.HP, ammo: 15, over: false, reloading: false, kills: 0 };
+        const world = { time: 12, rain: false, cycleDuration: 120 }; // 120s = 1 dia completo
+        
+        let camera, scene, renderer, controls, raycaster;
+        let move = { f: false, b: false, l: false, r: false, run: false };
+        let physics = { vy: 0, gravity: 30, jump: 12, canJump: false };
+        
+        const objects = { buildings: [], zombies: [], npcs: [], cars: [], particles: [], rainSystem: null };
+        let gunMesh, muzzleLight, lastTime = performance.now();
+        let sunLight, ambientLight;
+        let audioCtx = null;
+
+        // --- ASSETS ---
+        let textures = { walls: [], signs: [] };
+        
+        function genTextures() {
+            // Texturas de Prédio
+            for(let i=0; i<3; i++) {
+                const c = document.createElement('canvas'); c.width=64; c.height=128; 
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = `rgb(${50+Math.random()*50},${50+Math.random()*50},${60+Math.random()*60})`;
+                ctx.fillRect(0,0,64,128);
+                ctx.fillStyle = '#1a1a1a'; // Janelas
+                for(let y=10; y<120; y+=20) for(let x=5; x<60; x+=15) if(Math.random()>.2) ctx.fillRect(x,y,8,12);
+                const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter;
+                textures.walls.push(t);
+            }
+            // Placas
+            const texts = ["BULKJET", "LOJA SP", "MERCADO", "HOTEL", "FARMÁCIA"];
+            texts.forEach(txt => {
+                const c = document.createElement('canvas'); c.width=256; c.height=64;
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = txt==='BULKJET'?'#003366':'#111'; ctx.fillRect(0,0,256,64);
+                ctx.strokeStyle = txt==='BULKJET'?'#00aaff':'#fff'; ctx.lineWidth=4; ctx.strokeRect(2,2,252,60);
+                ctx.fillStyle = ctx.strokeStyle; ctx.font = 'bold 30px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+                ctx.fillText(txt, 128, 32);
+                textures.signs.push(new THREE.CanvasTexture(c));
+            });
+        }
+
+        // --- AI ---
+        async function callGemini(prompt) {
+            if (!apiKey) return `ALERTA: Nível ${currentLevel}. Proteja os civis. Cuidado com infecções. A Bulkjet enviou munição.`;
+            try {
+                const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+                });
+                const d = await r.json();
+                return d.candidates?.[0]?.content?.parts?.[0]?.text || "Erro satélite.";
+            } catch(e) { return "Satélite offline. Sobreviva."; }
+        }
+
+        // --- INIT ---
+        init();
+
+        function init() {
+            genTextures();
+            document.getElementById('hud-level').innerText = currentLevel;
+            document.getElementById('zombie-display').innerText = CONFIG.Z_COUNT;
+            document.getElementById('npc-display').innerText = CONFIG.NPC_COUNT;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.01);
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.7, 0);
+
+            // Luzes Dinâmicas
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            sunLight = new THREE.DirectionalLight(0xffffee, 1);
+            sunLight.position.set(50, 100, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.camera.left = -200; sunLight.shadow.camera.right = 200;
+            sunLight.shadow.camera.top = 200; sunLight.shadow.camera.bottom = -200;
+            sunLight.shadow.mapSize.set(2048, 2048);
+            scene.add(sunLight);
+
+            controls = new PointerLockControls(camera, document.body);
+            
+            // Criação do Mundo
+            createCity();
+            createWeapon();
+            createRain();
+
+            // Spawns
+            for(let i=0; i<CONFIG.Z_COUNT; i++) spawnHumanoid('zombie');
+            for(let i=0; i<CONFIG.NPC_COUNT; i++) spawnHumanoid('npc');
+            for(let i=0; i<CONFIG.CARS; i++) spawnCar();
+
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            setupEvents();
+            animate();
+
+            callGemini(`Frase militar curta sobre surto zumbi em SP, clima instável e perigo de infecção civil. Mencione 'Bulkjet' como aliada.`).then(t => {
+                document.getElementById('ai-briefing').innerText = t;
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('loader').style.display = 'none';
+            });
+        }
+
+        function createCity() {
+            // Chão
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({color:0x111111, roughness:0.8}));
+            floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+
+            // Ruas e Prédios
+            const box = new THREE.BoxGeometry(1,1,1);
+            // Grid de 50x50. Prédios nas células, ruas nas divisões.
+            for(let x=-300; x<=300; x+=50) {
+                for(let z=-300; z<=300; z+=50) {
+                    if(Math.abs(x)<25 && Math.abs(z)<25) continue; // Spawn area limpa
+
+                    // Calçada
+                    const curb = new THREE.Mesh(box, new THREE.MeshStandardMaterial({color:0x555555}));
+                    curb.position.set(x, 0.1, z);
+                    curb.scale.set(40, 0.2, 40);
+                    curb.receiveShadow = true; scene.add(curb);
+
+                    // Prédio
+                    if(Math.random() > 0.1) {
+                        const h = 20 + Math.random() * 60;
+                        const mat = new THREE.MeshStandardMaterial({ map: textures.walls[Math.floor(Math.random()*3)] });
+                        const b = new THREE.Mesh(box, mat);
+                        b.position.set(x, h/2, z);
+                        b.scale.set(38, h, 38);
+                        b.castShadow = true; b.receiveShadow = true;
+                        scene.add(b);
+                        
+                        // Hitbox
+                        const bbox = new THREE.Box3().setFromObject(b);
+                        objects.buildings.push(bbox);
+
+                        // Placa
+                        if(Math.random() > 0.6) {
+                            const smat = new THREE.MeshBasicMaterial({map: textures.signs[Math.floor(Math.random()*textures.signs.length)]});
+                            const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), smat);
+                            sign.position.set(x, 6, z+19.1);
+                            scene.add(sign);
+                        }
+                    }
+                }
+            }
+        }
+
+        function spawnCar() {
+            const grp = new THREE.Group();
+            
+            // Modelo Simples do Carro
+            const bodyMat = new THREE.MeshStandardMaterial({color: Math.random()>0.5 ? 0x0044aa : 0xaa0000}); // Bulkjet Blue ou Red
+            const chassi = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 4.5), bodyMat);
+            chassi.position.y = 1;
+            grp.add(chassi);
+
+            // Rodas
+            const wGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.2, 12); wGeo.rotateZ(Math.PI/2);
+            const wMat = new THREE.MeshStandardMaterial({color:0x111111});
+            const w1 = new THREE.Mesh(wGeo,wMat); w1.position.set(1, 0.4, 1.5); grp.add(w1);
+            const w2 = new THREE.Mesh(wGeo,wMat); w2.position.set(-1, 0.4, 1.5); grp.add(w2);
+            const w3 = new THREE.Mesh(wGeo,wMat); w3.position.set(1, 0.4, -1.5); grp.add(w3);
+            const w4 = new THREE.Mesh(wGeo,wMat); w4.position.set(-1, 0.4, -1.5); grp.add(w4);
+
+            // Faróis
+            const lMat = new THREE.MeshBasicMaterial({color: 0xffffaa});
+            const l1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.1), lMat); l1.position.set(0.6, 1, 2.3); grp.add(l1);
+            const l2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.1), lMat); l2.position.set(-0.6, 1, 2.3); grp.add(l2);
+
+            // Lógica de Movimento
+            // Ruas são em X = ... -75, -25, 25, 75 ... (Centro das ruas são o meio dos blocos de 50)
+            // Os prédios estão em 0, 50, 100. As ruas estão em 25, 75.
+            const isX = Math.random() > 0.5;
+            const lane = (Math.floor(Math.random() * 10) - 5) * 50 + 25; // Seleciona uma rua
+            
+            if(isX) {
+                grp.position.set(-300 + Math.random()*600, 0, lane);
+                grp.rotation.y = Math.PI / 2;
+                grp.userData = { axis: 'x', dir: 1, speed: 15 + Math.random()*10 };
+            } else {
+                grp.position.set(lane, 0, -300 + Math.random()*600);
+                grp.userData = { axis: 'z', dir: 1, speed: 15 + Math.random()*10 };
+            }
+            
+            scene.add(grp);
+            objects.cars.push(grp);
+        }
+
+        function createRain() {
+            const geo = new THREE.BufferGeometry();
+            const counts = 5000;
+            const pos = new Float32Array(counts * 3);
+            for(let i=0; i<counts*3; i+=3) {
+                pos[i] = (Math.random()-0.5)*200;
+                pos[i+1] = Math.random()*100;
+                pos[i+2] = (Math.random()-0.5)*200;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({color:0xaaaaaa, size:0.2, transparent:true, opacity:0.6});
+            objects.rainSystem = new THREE.Points(geo, mat);
+            objects.rainSystem.visible = false;
+            camera.add(objects.rainSystem); // Chuva segue a câmera
+            scene.add(camera); // Garante que a câmera está na cena
+        }
+
+        function spawnHumanoid(type, pos = null) {
+            const isZombie = type === 'zombie';
+            const grp = new THREE.Group();
+            
+            // Cores
+            const skinColor = isZombie ? 0x558855 : 0xffccaa; // Verde vs Pele
+            const shirtColor = isZombie ? 0x444444 : (Math.random()>.5 ? 0x0055ff : 0xffffff); // Escuro vs Azul/Branco
+
+            const skin = new THREE.MeshStandardMaterial({color: skinColor});
+            const cloth = new THREE.MeshStandardMaterial({color: shirtColor});
+
+            // Corpo
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), cloth); torso.position.y=1.35; grp.add(torso);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), skin); head.position.y=1.9; grp.add(head);
+            
+            // Membros (simplificados)
+            const legG = new THREE.BoxGeometry(0.18, 0.8, 0.2);
+            const lLeg = new THREE.Mesh(legG, new THREE.MeshStandardMaterial({color:0x222222})); lLeg.position.set(-0.15, 0.5, 0); grp.add(lLeg);
+            const rLeg = new THREE.Mesh(legG, new THREE.MeshStandardMaterial({color:0x222222})); rLeg.position.set(0.15, 0.5, 0); grp.add(rLeg);
+
+            const armsM = isZombie && Math.random()>0.5 ? 0 : -0.5; // Zumbi com braços para frente?
+            const armG = new THREE.BoxGeometry(0.15, 0.7, 0.15);
+            const lArm = new THREE.Mesh(armG, skin); lArm.position.set(-0.35, 1.4, 0); if(isZombie) lArm.rotation.x = -1.5; grp.add(lArm);
+            const rArm = new THREE.Mesh(armG, skin); rArm.position.set(0.35, 1.4, 0); if(isZombie) rArm.rotation.x = -1.5; grp.add(rArm);
+
+            if(pos) {
+                grp.position.copy(pos);
+            } else {
+                let ok=false;
+                while(!ok) {
+                    grp.position.set((Math.random()-0.5)*400, 0, (Math.random()-0.5)*400);
+                    if(grp.position.length()>20) ok=true;
+                }
+            }
+
+            grp.userData = { 
+                type: type, 
+                hp: isZombie ? CONFIG.Z_HP : 50, 
+                speed: isZombie ? (2+Math.random()*4) : (3+Math.random()*2),
+                limbs: {lLeg, rLeg},
+                id: Math.random()
+            };
+
+            scene.add(grp);
+            if(isZombie) objects.zombies.push(grp);
+            else objects.npcs.push(grp);
+        }
+
+        function createWeapon() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({color:0x222});
+            g.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.6), mat));
+            muzzleLight = new THREE.PointLight(0xffff00, 0, 5);
+            muzzleLight.position.set(0, 0.1, -0.4);
+            g.add(muzzleLight);
+            g.position.set(0.25, -0.3, -0.5);
+            camera.add(g);
+            gunMesh = g;
+        }
+
+        // --- GAMEPLAY LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            if(gameState.over) return;
+
+            const time = performance.now();
+            const delta = Math.min((time - lastTime) / 1000, 0.1);
+            lastTime = time;
+
+            // 1. Ciclo Dia/Noite e Clima
+            updateEnvironment(delta);
+
+            if(controls.isLocked) {
+                // 2. Player
+                updatePlayer(delta);
+
+                // 3. Zumbis
+                updateZombies(delta, time);
+
+                // 4. NPCs
+                updateNPCs(delta, time);
+
+                // 5. Carros
+                updateCars(delta);
+
+                // 6. Partículas
+                updateParticles();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updateEnvironment(dt) {
+            // Tempo
+            world.time += dt * (24 / world.cycleDuration); // Avança horas
+            if(world.time >= 24) world.time = 0;
+
+            const hours = Math.floor(world.time);
+            const mins = Math.floor((world.time - hours) * 60);
+            const label = hours >= 6 && hours < 18 ? "SOL" : "LUA";
+            document.getElementById('time-display').innerText = `${hours.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')} - ${label}`;
+
+            // Luz e Cor do Céu
+            const alpha = (Math.sin((world.time / 24) * Math.PI * 2 - Math.PI/2) + 1) / 2; // 0 (Noite) a 1 (Dia)
+            sunLight.intensity = alpha;
+            ambientLight.intensity = 0.1 + alpha * 0.5;
+            
+            const skyColor = new THREE.Color().setHSL(0.6, 0.5, alpha * 0.5 + 0.05); // Azul escuro a claro
+            if(world.rain) skyColor.setHSL(0.6, 0.2, 0.1 + alpha * 0.2); // Cinza se chover
+            scene.background.lerp(skyColor, 0.05);
+            scene.fog.color.copy(scene.background);
+            scene.fog.density = world.rain ? 0.03 : 0.008;
+
+            // Posição do Sol
+            const angle = (world.time / 24) * Math.PI * 2;
+            sunLight.position.set(Math.cos(angle)*100, Math.sin(angle)*100, 50);
+
+            // Clima Aleatório
+            if(Math.random() < 0.0005) world.rain = !world.rain;
+            objects.rainSystem.visible = world.rain;
+            if(world.rain) {
+                const positions = objects.rainSystem.geometry.attributes.position.array;
+                for(let i=1; i<positions.length; i+=3) {
+                    positions[i] -= 20 * dt;
+                    if(positions[i] < 0) positions[i] = 50;
+                }
+                objects.rainSystem.geometry.attributes.position.needsUpdate = true;
+            }
+        }
+
+        function updatePlayer(dt) {
+            // Movimento
+            const speed = (move.run ? 12 : 6) * dt;
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir); dir.y=0; dir.normalize();
+            const right = new THREE.Vector3(); right.crossVectors(dir, camera.up).normalize();
+
+            const vel = new THREE.Vector3();
+            if(move.f) vel.add(dir); if(move.b) vel.sub(dir);
+            if(move.r) vel.add(right); if(move.l) vel.sub(right);
+            if(vel.lengthSq()>0) vel.normalize().multiplyScalar(speed);
+
+            // Colisão X/Z
+            camera.position.x += vel.x; if(checkWall(camera.position)) camera.position.x -= vel.x;
+            camera.position.z += vel.z; if(checkWall(camera.position)) camera.position.z -= vel.z;
+
+            // Pulo e Gravidade
+            physics.vy -= physics.gravity * dt;
+            camera.position.y += physics.vy * dt;
+            if(camera.position.y < 1.7) { camera.position.y = 1.7; physics.vy = 0; physics.canJump = true; }
+
+            // Weapon Sway
+            if(gunMesh) gunMesh.position.y = -0.3 + Math.sin(performance.now()*0.01) * (vel.lengthSq()>0 ? 0.005 : 0.001);
+        }
+
+        function updateZombies(dt, t) {
+            objects.zombies.forEach(z => {
+                // Seleção de Alvo (Player ou NPC mais próximo)
+                let target = camera.position;
+                let minDist = z.position.distanceTo(camera.position);
+                let targetIsNpc = false;
+                let targetNpcObj = null;
+
+                // Checa NPCs próximos
+                for(let npc of objects.npcs) {
+                    const d = z.position.distanceTo(npc.position);
+                    if(d < minDist && d < 30) { // Zumbis priorizam NPCs se estiverem perto
+                        minDist = d;
+                        target = npc.position;
+                        targetIsNpc = true;
+                        targetNpcObj = npc;
+                    }
+                }
+
+                // Move e Olha
+                z.lookAt(target.x, 0, target.z);
+                if(minDist > 1) {
+                    const fwd = new THREE.Vector3(0,0,1).applyQuaternion(z.quaternion).multiplyScalar(z.userData.speed * dt);
+                    const next = z.position.clone().add(fwd);
+                    if(!checkWall(next)) z.position.add(fwd);
+                    
+                    // Animação Pernas
+                    z.userData.limbs.lLeg.rotation.x = Math.sin(t*0.01)*0.5;
+                    z.userData.limbs.rLeg.rotation.x = Math.cos(t*0.01)*0.5;
+                } else {
+                    // Ataque
+                    if(Math.random() < 0.02) {
+                        if(targetIsNpc && targetNpcObj) {
+                            // Infectar NPC
+                            infectNPC(targetNpcObj);
+                        } else {
+                            // Atacar Player
+                            damagePlayer(10);
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateNPCs(dt, t) {
+            objects.npcs.forEach(n => {
+                // NPC Corre aleatoriamente ou foge de zumbi próximo (simplificado para andar aleatório aqui)
+                n.translateZ(n.userData.speed * dt * 0.5);
+                
+                // Muda direção se bater ou aleatoriamente
+                if(checkWall(n.position) || Math.random() < 0.02) {
+                    n.rotation.y += Math.PI/2 + (Math.random()-0.5);
+                }
+                
+                // Limites do mapa
+                if(Math.abs(n.position.x) > 300 || Math.abs(n.position.z) > 300) n.lookAt(0,0,0);
+
+                // Animação
+                n.userData.limbs.lLeg.rotation.x = Math.sin(t*0.015);
+                n.userData.limbs.rLeg.rotation.x = Math.cos(t*0.015);
+            });
+        }
+
+        function updateCars(dt) {
+            objects.cars.forEach(c => {
+                c.translateZ(c.userData.speed * dt);
+                
+                // Loop no mapa
+                if(Math.abs(c.position.x) > 350 || Math.abs(c.position.z) > 350) {
+                    if(c.userData.axis === 'x') c.position.x = -c.position.x + (c.userData.dir*10);
+                    else c.position.z = -c.position.z + (c.userData.dir*10);
+                }
+
+                // Atropelamento
+                const dist = c.position.distanceTo(new THREE.Vector3(camera.position.x, 0, camera.position.z));
+                if(dist < 3) damagePlayer(20, "ATROPELADO");
+            });
+        }
+
+        function updateParticles() {
+            for(let i=objects.particles.length-1; i>=0; i--) {
+                const p = objects.particles[i];
+                p.position.add(p.userData.vel);
+                p.scale.multiplyScalar(0.9);
+                if(p.scale.x < 0.01) { scene.remove(p); objects.particles.splice(i,1); }
+            }
+        }
+
+        // --- INTERAÇÕES ---
+        function shoot() {
+            if(!controls.isLocked || gameState.reloading || gameState.ammo <= 0) {
+                if(gameState.ammo<=0) sfx('click');
+                return;
+            }
+            
+            gameState.ammo--;
+            document.getElementById('ammo-display').innerText = gameState.ammo;
+            sfx('shoot');
+            
+            // Recoil Visual
+            const ch = document.getElementById('crosshair');
+            ch.classList.add('recoil'); setTimeout(()=>ch.classList.remove('recoil'), 100);
+            gunMesh.position.z += 0.2; setTimeout(()=>gunMesh.position.z -= 0.05, 50);
+            muzzleLight.intensity = 5; setTimeout(()=>muzzleLight.intensity = 0, 50);
+
+            // Raycast
+            raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+            const hits = raycaster.intersectObjects(scene.children, true);
+            
+            for(let h of hits) {
+                // Ignora chuva e partículas
+                if(h.object.type === 'Points') continue;
+
+                let obj = h.object;
+                let target = null;
+                // Sobe a hierarquia para achar o grupo (Zumbi ou NPC)
+                while(obj.parent && obj.parent.type === 'Group') {
+                    if(obj.parent.userData.hp) { target = obj.parent; break; }
+                    obj = obj.parent;
+                }
+
+                if(target) {
+                    if(target.userData.type === 'zombie') {
+                        damageZombie(target, h.point);
+                    } else {
+                        // Atirou no civil? 
+                        sfx('hit');
+                        spark(h.point, 0xff0000);
+                        // Opcional: penalidade
+                    }
+                    return;
+                } else {
+                    spark(h.point, 0xffff00);
+                    return;
+                }
+            }
+        }
+
+        function damageZombie(z, pos) {
+            z.userData.hp -= 60;
+            sfx('hit');
+            spark(pos, 0x550000);
+            z.position.add(z.position.clone().sub(camera.position).normalize().multiplyScalar(0.5)); // Knockback
+
+            if(z.userData.hp <= 0) {
+                sfx('kill');
+                scene.remove(z);
+                objects.zombies = objects.zombies.filter(o => o !== z);
+                gameState.kills++;
+                document.getElementById('zombie-display').innerText = objects.zombies.length;
+                
+                const kf = document.getElementById('kill-feed');
+                kf.innerText = "AMEAÇA ELIMINADA";
+                kf.style.opacity = 1; setTimeout(()=>kf.style.opacity=0, 500);
+
+                if(objects.zombies.length === 0) winLevel();
+            }
+        }
+
+        function infectNPC(npc) {
+            sfx('hurt'); // Som de dor
+            // Remove NPC
+            scene.remove(npc);
+            objects.npcs = objects.npcs.filter(n => n !== npc);
+            document.getElementById('npc-display').innerText = objects.npcs.length;
+
+            // Cria Zumbi no lugar
+            spawnHumanoid('zombie', npc.position);
+            objects.zombies[objects.zombies.length-1].userData.hp = CONFIG.Z_HP / 2; // Nasce mais fraco
+            document.getElementById('zombie-display').innerText = objects.zombies.length;
+
+            const kf = document.getElementById('kill-feed');
+            kf.innerText = "CIVIL INFECTADO!";
+            kf.style.color = "#ff0000";
+            kf.style.opacity = 1; setTimeout(()=>{ kf.style.opacity=0; kf.style.color="#ff4444"; }, 1000);
+        }
+
+        function damagePlayer(qtd, msg=" VOCêFOI JOGAR NO VASCO") {
+            gameState.hp -= qtd;
+            document.getElementById('health-display').innerText = Math.ceil(gameState.hp);
+            sfx('hurt');
+            const overlay = document.getElementById('damage-overlay');
+            overlay.style.opacity = 1; setTimeout(()=>overlay.style.opacity=0, 200);
+
+            if(gameState.hp <= 0) {
+                gameState.over = true;
+                controls.unlock();
+                document.querySelector('h1').innerText = msg;
+                document.querySelector('h1').style.color = 'red';
+                document.getElementById('start-btn').innerText = "TENTAR NOVAMENTE";
+                document.getElementById('start-btn').onclick = () => location.reload();
+                document.getElementById('blocker').style.display = 'flex';
+            }
+        }
+
+        function winLevel() {
+            gameState.over = true;
+            controls.unlock();
+            const next = currentLevel + 1;
+            localStorage.setItem('zumbi_sp_level', next);
+            
+            document.querySelector('h1').innerText = "ÁREA LIMPA!";
+            document.querySelector('h1').style.color = '#4f4';
+            document.getElementById('start-btn').innerText = "NÍVEL " + next;
+            document.getElementById('start-btn').onclick = () => location.reload();
+            document.getElementById('blocker').style.display = 'flex';
+            
+            callGemini(`Parabenize pelo sucesso no nível ${currentLevel}. SUPRIMENTOS CHEGANDO . Clima melhorando.`).then(t => {
+                document.getElementById('ai-briefing').innerText = t;
+            });
+        }
+
+        // --- UTILITÁRIOS ---
+        function checkWall(pos) {
+            const p = new THREE.Vector3(pos.x, 1, pos.z);
+            for(let b of objects.buildings) if(b.containsPoint(p)) return true;
+            return false;
+        }
+
+        function spark(pos, col) {
+            const mat = new THREE.MeshBasicMaterial({color:col});
+            for(let i=0; i<4; i++) {
+                const p = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.05), mat);
+                p.position.copy(pos);
+                p.userData.vel = new THREE.Vector3((Math.random()-.5),(Math.random()*.5),(Math.random()-.5));
+                scene.add(p); objects.particles.push(p);
+            }
+        }
+
+        function sfx(type) {
+            if(!audioCtx) return;
+            const t = audioCtx.currentTime;
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.connect(g); g.connect(audioCtx.destination);
+            
+            if(type==='shoot') {
+                o.type='sawtooth'; o.frequency.setValueAtTime(800, t); o.frequency.exponentialRampToValueAtTime(100, t+0.1);
+                g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.1);
+                o.start(); o.stop(t+0.1);
+            } else if(type==='hit') {
+                o.type='square'; o.frequency.setValueAtTime(150, t); 
+                g.gain.setValueAtTime(0.1, t); g.gain.linearRampToValueAtTime(0, t+0.05);
+                o.start(); o.stop(t+0.05);
+            } else if(type==='hurt') {
+                o.type='sawtooth'; o.frequency.setValueAtTime(60, t); 
+                g.gain.setValueAtTime(0.5, t); g.gain.linearRampToValueAtTime(0, t+0.3);
+                o.start(); o.stop(t+0.3);
+            }
+        }
+
+        function setupEvents() {
+            raycaster = new THREE.Raycaster();
+            document.getElementById('start-btn').onclick = () => {
+                controls.lock();
+                if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+            };
+            controls.addEventListener('unlock', () => { if(!gameState.over) document.getElementById('blocker').style.display='flex'; });
+            controls.addEventListener('lock', () => { document.getElementById('blocker').style.display='none'; });
+            
+            document.addEventListener('keydown', e => {
+                if(e.code==='KeyW') move.f=true; if(e.code==='KeyS') move.b=true;
+                if(e.code==='KeyA') move.l=true; if(e.code==='KeyD') move.r=true;
+                if(e.code==='ShiftLeft') move.run=true;
+                if(e.code==='Space' && physics.canJump) { physics.vy = physics.jump; physics.canJump = false; }
+                if(e.code==='KeyR' && !gameState.reloading) {
+                    gameState.reloading=true; 
+                    document.getElementById('ammo-display').innerText = "...";
+                    setTimeout(()=>{ gameState.ammo=15; gameState.reloading=false; document.getElementById('ammo-display').innerText = 15; }, 1500);
+                }
+            });
+            document.addEventListener('keyup', e => {
+                if(e.code==='KeyW') move.f=false; if(e.code==='KeyS') move.b=false;
+                if(e.code==='KeyA') move.l=false; if(e.code==='KeyD') move.r=false;
+                if(e.code==='ShiftLeft') move.run=false;
+            });
+            document.addEventListener('mousedown', shoot);
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth/window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+    </script>
+</body>
+</html>
